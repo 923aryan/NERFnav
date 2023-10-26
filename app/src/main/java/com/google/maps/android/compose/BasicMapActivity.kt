@@ -14,7 +14,6 @@
 
 package com.google.maps.android.compose
 
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -24,10 +23,15 @@ import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,34 +41,36 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
-import androidx.compose.material.Card
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Divider
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Icon
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.ModalBottomSheetLayout
-import androidx.compose.material.ModalBottomSheetValue
-import androidx.compose.material.Text
+import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetScaffoldState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,12 +78,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -85,16 +91,29 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
 import com.google.maps.android.compose.Navigation.Screens
 import com.google.maps.android.compose.ViewModel.RegisterViewModel
-import com.google.maps.android.data.geojson.GeoJsonFeature
 import com.google.maps.android.data.geojson.GeoJsonLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.runtime.MutableState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Dot
+import com.google.android.gms.maps.model.Gap
+import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.PolylineOptions
+import com.google.maps.android.PolyUtil
+import com.google.maps.android.compose.model.ImageData
+import com.google.maps.android.compose.theme.MapsComposeSampleTheme
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONException
@@ -108,10 +127,11 @@ val singapore3 = LatLng(1.45, 103.77)
 val singapore4 = LatLng(1.50, 103.77)
 val acropolispos = LatLng(37.9715, 23.7257)
 val sydenypos = LatLng(-33.8568, 151.2153)
-
+val myLcoation = LatLng(12.8173, 80.0403)
 val defaultCameraPosition = CameraPosition.fromLatLngZoom(singapore, 11f)
 val acropolisCameraPosition = CameraPosition.fromLatLngZoom(acropolispos, 16f)
 val sydneyCameraPosition = CameraPosition.fromLatLngZoom(sydenypos, 16f)
+val abode = CameraPosition.fromLatLngZoom(myLcoation, 20f)
 var layer : GeoJsonLayer? = null
 
 
@@ -127,8 +147,9 @@ class BasicMapActivity : ComponentActivity() {
 
         setContent {
 
-
-                MainScreen(comingFromActivity = false)
+                MapsComposeSampleTheme(darkTheme = true) {
+                    MainScreen(comingFromActivity = false)
+                }
 
         }
     }
@@ -159,7 +180,7 @@ fun MainScreen(comingFromActivity: Boolean)
                     position = defaultCameraPosition
                 }
                 GoogleMapView(
-                    modifier = Modifier.matchParentSize(),
+                    modifier = Modifier,
                     cameraPositionState = cameraPositionState,
                     onMapLoaded = {
                         isMapLoaded = true
@@ -168,9 +189,7 @@ fun MainScreen(comingFromActivity: Boolean)
                     playVideo = {
                         navController.navigate(Screens.VideoPlayerScreen.route)
                     }
-//                    OptedForStats = {
-//                        navController.navigate(Screens.StatsScreen.route)
-//                    }
+
 
                 )
                 if (!isMapLoaded) {
@@ -184,7 +203,7 @@ fun MainScreen(comingFromActivity: Boolean)
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier
-                                .background(MaterialTheme.colors.background)
+                                .background(MaterialTheme.colorScheme.background)
                                 .wrapContentSize()
                         )
                     }
@@ -238,9 +257,9 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
         if (selectedStats.value == typeOfStats[0])
         {
 
-            GDPGraph()
+            GDPGraph(selectedCountry.value)
             val context = LocalContext.current
-            // Drawing on the map is accomplished with a child-based API
+            // Drawing on the map is accomplished witht a child-based API
 
         }
         else
@@ -442,9 +461,12 @@ fun Test()
     val model: RegisterViewModel = viewModel()
     model.goBack()
 }
+
 @RequiresApi(Build.VERSION_CODES.R)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@OptIn(ExperimentalMaterialApi::class, MapsComposeExperimentalApi::class)
+@OptIn(ExperimentalMaterialApi::class, MapsComposeExperimentalApi::class,
+    ExperimentalMaterial3Api::class
+)
 @Composable
 fun GoogleMapView(
     modifier: Modifier = Modifier,
@@ -454,7 +476,7 @@ fun GoogleMapView(
     playVideo: () -> Unit,
 //    OptedForStats: () -> Unit
 
-    ) {
+) {
 
     val scope = rememberCoroutineScope()
     val singaporeState = rememberMarkerState(position = singapore)
@@ -478,56 +500,194 @@ fun GoogleMapView(
     val showBoundary = remember{ mutableStateOf(false) }
     val showDialog = remember { mutableStateOf(false) }
     val showCountryDialog = remember{ mutableStateOf(false) }
-//    LaunchedEffect(key1 = true) {
-//        cameraPositionState.animate(
-//            update = CameraUpdateFactory.newCameraPosition(
-//                CameraPosition(acropolispos, 15f, 0f, 0f)
-//            ),
-//            durationMs = 1000
-//        )
-//    }
-    val modalSheetState = rememberModalBottomSheetState(
-        initialValue = ModalBottomSheetValue.Hidden,
-        confirmValueChange = { it != ModalBottomSheetValue.HalfExpanded },
-        skipHalfExpanded = false
-    )
-    if (mapVisible) {
-        ModalBottomSheetLayout(sheetState = modalSheetState,
-            sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
-            sheetContent = {
-                Row {
-                    Button(
-                        modifier = Modifier
-                            .weight(0.5f)
-                            .fillMaxWidth()
-                            .padding(8.dp), shape = RoundedCornerShape(50.dp),
-                        onClick = { },
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
-                    ) {
-                        Text(text = "View in AR")
-                        // An icon that indicates the expansion state of the menu
+    val stateOfScaffold = rememberBottomSheetScaffoldState()
+    val viewModel: RegisterViewModel = viewModel()
+    val line = remember{ mutableStateOf("") }
+    val showDirection = remember{ mutableStateOf(false) }
+    val enableButton = remember {
+        mutableStateOf(false)
+    }
+    val options =
+        mutableListOf(
+            ImageData(
+                "Archopolis of Athens",
+                R.drawable.archopolis,
+                Color(232,222,248)
+            ),
+            ImageData(
+                "Opera House",
+                R.drawable.sydney,
+                Color(232,222,248)
+            )
 
+        )
+    for(i in 1..8)
+        options.add(ImageData("Sample Image", R.drawable.eifeltower, Color(232,222,248)))
+
+
+    if (mapVisible) {
+
+        BottomSheetScaffold(modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+
+                    Log.d("value", stateOfScaffold.bottomSheetState.currentValue.toString())
+                    scope.launch {
+                        if (stateOfScaffold.bottomSheetState.hasExpandedState) {
+                            stateOfScaffold.bottomSheetState.partialExpand()
+                        }
                     }
-                    var s by rememberSaveable { mutableStateOf(false) }
-                    Button(
-                        modifier = Modifier
-                            .weight(0.5f)
+                })
+            },
+            scaffoldState = stateOfScaffold,sheetPeekHeight = 40.dp, sheetDragHandle = {
+            BottomSheetDefaults.DragHandle(
+                width = 60.dp,
+                modifier = Modifier.offset(y = (-5).dp)
+            )
+        },
+            sheetContent = {
+
+                Box(
+                    modifier = Modifier
+                        .animateContentSize()
+                        .fillMaxWidth()
+                        .padding(5.dp)
+                ) {
+
+                    Column(
+                        Modifier
                             .fillMaxWidth()
-                            .padding(8.dp), shape = RoundedCornerShape(50.dp),
-                        onClick = {
-                           playVideo()
-                        },
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
+                        ,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "View NERF")
+
+                        val itemClicked = remember { mutableStateOf(false) }
+                        val itemNo = remember { mutableStateOf(-1) }
+                        val itemName = remember{ mutableStateOf("") }
+
+                        LaunchedEffect(stateOfScaffold.bottomSheetState.currentValue) {
+                           itemNo.value = -1
+                            itemClicked.value = false
+                            delay(400)
+                            if(stateOfScaffold.bottomSheetState.hasExpandedState && enableButton.value)
+                            {
+
+                                enableButton.value = false
+                            }
+                        }
+
+                        AssistChip(onClick = { /*TODO*/ }, label = {
+                            Log.d("not good", "not good")
+                            Text(text = "Explore Places", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
+                        )
+                        Spacer(modifier = Modifier.size(5.dp))
+                        Divider()
+                        val colors = listOf<Color>(Color.Green, Color.Yellow)
+                        val viewNerf = remember { mutableStateOf(false) }
+                        if(!viewNerf.value)
+                        {
+                            NerfItems(
+                                options,
+                                itemNo,
+                                itemClicked,
+                                itemName,
+                                scope,
+                                cameraPositionState
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.size(15.dp))
+                        val density = LocalDensity.current
+
+                        AnimatedVisibility(
+                            itemClicked.value && !viewNerf.value,
+                            enter = expandIn()
+                        ) {
+                            Body(itemName, viewNerf){
+
+                                scope.launch {
+
+                                    stateOfScaffold.bottomSheetState.partialExpand()
+
+                                        try {
+                                            withContext(Dispatchers.Main) {
+                                                val cameraPosition = abode
+                                                cameraPositionState.animate(
+                                                    update = CameraUpdateFactory.zoomBy(
+                                                        -20f
+                                                    ),
+                                                    1000
+                                                )
+                                                delay(1000)
+                                                cameraPositionState.animate(
+                                                    update = CameraUpdateFactory.newCameraPosition(
+                                                        cameraPosition
+                                                    ),
+                                                    3000
+                                                )
+
+//
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.d(
+                                                "failed due to",
+                                                e.message.toString()
+                                            )
+                                        }
+
+                                }
+
+                            }
+
+                        }
+
+                        if(viewNerf.value){
+                            val configuraiton = LocalConfiguration.current
+                            val width = configuraiton.screenWidthDp.dp
+                            val height = configuraiton.screenHeightDp.dp
+                            Column {
+                                Box(modifier = Modifier
+
+                                    .clip(
+                                        RoundedCornerShape(5.dp)
+                                    )
+                                    .fillMaxWidth()
+                                    .height((height / 3))
+                                    .background(MaterialTheme.colorScheme.background)
+                                    .clickable { }, contentAlignment = Alignment.Center)
+                                {
+
+
+                                    PlayVideo() {
+                                        viewNerf.value = false
+                                    }
+
+                                }
+                                OptionsInVideo(viewModel){
+                                    line.value = it
+                                    showDirection.value = true
+                                }
+                                Spacer(modifier = Modifier.size(15.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.size(15.dp))
+                        UploadView()
 
                     }
                 }
 
 
+
             }) {
+
+
             GoogleMap(
-                modifier = modifier,
+                modifier = modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
                 properties = mapProperties,
                 uiSettings = uiSettings,
@@ -536,6 +696,8 @@ fun GoogleMapView(
                     Log.d(TAG, "POI clicked: ${it.name}")
                 }
             ) {
+
+                Marker()
 
                 val context = LocalContext.current
                 // Drawing on the map is accomplished with a child-based API
@@ -551,87 +713,62 @@ fun GoogleMapView(
                     if(layer != null)
                     {
                         layer!!.removeLayerFromMap()
+                        showDirection.value = false
                     }
                 }
-if(showBoundary.value)
-{
-
-    MapEffect(key1 = Unit)
-    {
-        try {
-            val selectedCountryResource = getResourceIdForCountryName(formatCountryName(selectedCountry.value), context)
-
-             layer = GeoJsonLayer(it, selectedCountryResource, context)
-
-            val style = layer!!.defaultPolygonStyle
-            // style.fillColor = Color.MAGENTA
-            style.strokeColor = android.graphics.Color.RED
-            style.strokeWidth = 6f
-            layer!!.addLayerToMap()
-        }
-        catch ( ex: IOException) {
-            Log.e("IOException", ex.getLocalizedMessage());
-        } catch ( ex: JSONException) {
-            Log.e("JSONException", ex.getLocalizedMessage());
-        }
-
-    }
-
-}
 
 
+                if(showDirection.value){
+                    val PATTERN_DASH_LENGTH_PX = 20f // The length of each dash in pixels
+                    val PATTERN_GAP_LENGTH_PX = 20f // The gap between each dash in pixels
+                    val DASH = Dash(PATTERN_DASH_LENGTH_PX) // A dash pattern item
+                    val GAP = Gap(PATTERN_GAP_LENGTH_PX) // A gap pattern item
+                    val PATTERN_POLYLINE_DASH = listOf(DASH, GAP)
+                    Log.d("underthis", "${line.value}")
+                    val decodedPolyline = PolyUtil.decode("~jvmEgxyy[dCXQlAY`D@h@@Vz@_@dB}@bBcAnB_A~@q@b@k@`@}@XeALqAIuCMqAu@cEWyB_@iAg@eAQUuAcAsAa@MDeAIaBCe@CqGIw@Gw@[][]y@Ma@JcEW{G?eAJ}C^gHZgEVqC_AQ_GYqF_@\\iFL_B_TyAe@M}Im@uDSoFi@a@MGLM@KK?A")
+                    val polylineOptions = PolylineOptions()
+                        .width(10f)
+                        .color(0xFFFF0000.toInt())
+                        .pattern(PATTERN_POLYLINE_DASH)
+                    MapEffect(key1 = Unit)
+                    {
+                        it.addPolyline(polylineOptions.addAll(decodedPolyline))
 
+                    }
+                    if(enableButton.value)
+                    {
 
+                        Marker(state = rememberMarkerState(position = myLcoation),
+                            title = "Abode Valley",
+                            icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
+                    }
 
+                }
+                if(showBoundary.value)
+                {
 
-//            MarkerInfoWindowContent(
-//                state = singaporeState,
-//                title = "Zoom in has been tapped $ticker times.",
-//                onClick = markerClick,
-//                draggable = true,
-//            ) {
-//                Text(it.title ?: "Title", color = Color.Red)
-//            }
-//            MarkerInfoWindowContent(
-//                state = singapore2State,
-//                title = "Marker with custom info window.\nZoom in has been tapped $ticker times.",
-//                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE),
-//                onClick = markerClick,
-//            ) {
-//                Text(it.title ?: "Title", color = Color.Blue)
-//            }
-//            Marker(
-//                state = singapore3State,
-//                title = "Marker in Singapore",
-//                onClick = markerClick
-//            )
-//            MarkerComposable(
-//                title = "Marker Composable",
-//                keys = arrayOf("singapore4"),
-//                state = singapore4State,
-//                onClick = markerClick,
-//            ) {
-//                Box(
-//                    modifier = Modifier
-//                        .width(88.dp)
-//                        .height(36.dp)
-//                        .clip(RoundedCornerShape(16.dp))
-//                        .background(Color.Red),
-//                    contentAlignment = Alignment.Center,
-//                ) {
-//                ) {
-//                    Text(
-//                        text = "Compose Marker",
-//                        textAlign = TextAlign.Center,
-//                    )
-//                }
-//            }
-//            Circle(
-//                center = circleCenter,
-//                fillColor = MaterialTheme.colors.secondary,
-//                strokeColor = MaterialTheme.colors.secondaryVariant,
-//                radius = 1000.0,
-//            )
+                    MapEffect(key1 = Unit)
+                    {
+                        try {
+                            val selectedCountryResource = getResourceIdForCountryName(formatCountryName(selectedCountry.value), context)
+
+                            layer = GeoJsonLayer(it, selectedCountryResource, context)
+
+                            val style = layer!!.defaultPolygonStyle
+                            // style.fillColor = Color.MAGENTA
+                            style.strokeColor = android.graphics.Color.RED
+                            style.strokeWidth = 6f
+                            layer!!.addLayerToMap()
+                        }
+                        catch ( ex: IOException) {
+                            Log.e("IOException", ex.getLocalizedMessage());
+                        } catch ( ex: JSONException) {
+                            Log.e("JSONException", ex.getLocalizedMessage());
+                        }
+
+                    }
+
+                }
                 content()
 
             }
@@ -644,29 +781,8 @@ if(showBoundary.value)
                 }
             }
             Column {
-//
-//        MapTypeButton(type = Map) {
-//
-//        }
-//        MapTypeControls(onMapTypeClick = {
-//            Log.d("GoogleMap", "Selected map type $it")
-//            mapProperties = mapProperties.copy(mapType = it)
-//        })
                 Row {
-//            MapButton(
-//                text = "Reset Map",
-//                onClick = {
-//                    mapProperties = mapProperties.copy(mapType = MapType.NORMAL)
-//                    cameraPositionState.position = defaultCameraPosition
-//                    singaporeState.position = singapore
-//                    singaporeState.hideInfoWindow()
-//                }
-//            )
-//            MapButton(
-//                text = "Toggle Map",
-//                onClick = { mapVisible = !mapVisible },
-//                modifier = Modifier.testTag("toggleMapVisibility"),
-//            )
+
 
 
                     val mapTypes = listOf(
@@ -700,237 +816,117 @@ if(showBoundary.value)
                     ) {
                         // The Map Type button that shows the selected map type and toggles the menu
                         Box(modifier = Modifier.weight(0.4f)) {
-                            Button(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp), shape = RoundedCornerShape(50.dp),
-                                onClick = { mapTypeExpanded.value = !mapTypeExpanded.value },
-                                colors = ButtonDefaults.buttonColors(
-                                    backgroundColor = Color(
-                                        0xFF87CEEB
+//                            Button(
+//                                modifier = Modifier
+//                                    .fillMaxWidth()
+//                                    .padding(8.dp), shape = RoundedCornerShape(50.dp),
+//                                onClick = { mapTypeExpanded.value = !mapTypeExpanded.value },
+//                                colors = ButtonDefaults.buttonColors(
+//                                    backgroundColor = Color(
+//                                        0xFF87CEEB
+//                                    )
+//                                )
+//                            ) {
+//
+//
+//                            }
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center)
+                            {
+                                if(enableButton.value)
+                                {
+                                    AssistChip(onClick = { /*TODO*/ }, label = {
+                                        Log.d("not good", "not good")
+                                        Text(
+                                            text = "Select Location",
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    },
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                                        border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
                                     )
-                                )
-                            ) {
-                                Text(text = "Map Type")
-
-                            }
-                            if (mapTypeExpanded.value) {
-                                Dialog(onDismissRequest = { mapTypeExpanded.value = false }) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .height(300.dp)
-                                            .width(200.dp)
-                                            .background(Color.White),
-                                        contentAlignment = Alignment.Center
-                                        // Add rounded corners to the box
-                                    )
-                                    {
-                                        Column(
-                                            verticalArrangement = Arrangement.SpaceEvenly,
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                modifier = Modifier.padding(top = 8.dp),
-                                                text = "Select Map Type",
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.Black
-                                            )
-                                            Divider(
-                                                Modifier
-                                                    .width(200.dp)
-                                                    .padding(start = 10.dp, end = 10.dp),
-                                                color = Color.Black,
-                                                thickness = 2.dp
-                                            )
-                                            LazyColumn(
-                                                verticalArrangement = Arrangement.SpaceEvenly,
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(6.dp)
-                                            ) {
-                                                items(mapTypes.size) { option ->
-                                                    Text(
-                                                        text = mapTypes[option].toString(),
-                                                        color = Color(37, 150, 190),
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 18.sp,
-                                                        overflow = TextOverflow.Ellipsis,// Set the text color to blue
-                                                        modifier = Modifier
-                                                            .padding(8.dp)
-                                                            .clickable {
-                                                                mapProperties =
-                                                                    mapProperties.copy(mapType = mapTypes[option])
-                                                                mapTypeExpanded.value = false
-                                                            }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
                                 }
-
                             }
+
+
+
+//                            if (mapTypeExpanded.value) {
+//                                Dialog(onDismissRequest = { mapTypeExpanded.value = false }) {
+//                                    Box(
+//                                        modifier = Modifier
+//                                            .clip(RoundedCornerShape(16.dp))
+//                                            .height(300.dp)
+//                                            .width(200.dp)
+//                                            .background(Color.White),
+//                                        contentAlignment = Alignment.Center
+//                                        // Add rounded corners to the box
+//                                    )
+//                                    {
+//                                        Column(
+//                                            verticalArrangement = Arrangement.SpaceEvenly,
+//                                            horizontalAlignment = Alignment.CenterHorizontally
+//                                        ) {
+//                                            Text(
+//                                                modifier = Modifier.padding(top = 8.dp),
+//                                                text = "Select Map Type",
+//                                                fontSize = 20.sp,
+//                                                fontWeight = FontWeight.Bold,
+//                                                color = Color.Black
+//                                            )
+//                                            Divider(
+//                                                Modifier
+//                                                    .width(200.dp)
+//                                                    .padding(start = 10.dp, end = 10.dp),
+//                                                color = Color.Black,
+//                                                thickness = 2.dp
+//                                            )
+//                                            LazyColumn(
+//                                                verticalArrangement = Arrangement.SpaceEvenly,
+//                                                horizontalAlignment = Alignment.CenterHorizontally,
+//                                                modifier = Modifier
+//                                                    .fillMaxSize()
+//                                                    .padding(6.dp)
+//                                            ) {
+//                                                items(mapTypes.size) { option ->
+//                                                    Text(
+//                                                        text = mapTypes[option].toString(),
+//                                                        color = Color(37, 150, 190),
+//                                                        fontWeight = FontWeight.Bold,
+//                                                        fontSize = 18.sp,
+//                                                        overflow = TextOverflow.Ellipsis,// Set the text color to blue
+//                                                        modifier = Modifier
+//                                                            .padding(8.dp)
+//                                                            .clickable {
+//                                                                mapProperties =
+//                                                                    mapProperties.copy(mapType = mapTypes[option])
+//                                                                mapTypeExpanded.value = false
+//                                                            }
+//                                                    )
+//                                                }
+//                                            }
+//                                        }
+//                                    }
+//                                }
+//
+//                            }
 
                         }
 
 
 
-                        Box(modifier = Modifier.weight(0.4f)) {
-                            Button(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp), shape = RoundedCornerShape(50.dp),
-                                onClick = { showDialog.value = !showDialog.value;
-                                            showCountryDialog.value = false
-                                            showBoundary.value = false
-                                            if(layer != null)
-                                            {
-                                                layer!!.removeLayerFromMap()
-                                            }
-
-
-
-                                          },
-                                colors = ButtonDefaults.buttonColors(
-                                    backgroundColor = Color(
-                                        0xFF87CEEB
-                                    )
-                                )
-                            ) {
-                                Text(text = "Explore Places")
-                                // An icon that indicates the expansion state of the menu
-                                val icon =
-                                    if (nerfExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.ArrowDropDown
-                                Icon(imageVector = icon, contentDescription = null)
-                            }
-
-                            if (showDialog.value) {
-                                Dialog(
-                                    onDismissRequest = { showDialog.value = false }
-                                ) {
-                                    // Use a LazyColumn or a VerticalScroller here
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .height(300.dp)
-                                            .width(200.dp)
-                                            .background(Color.White),
-                                        contentAlignment = Alignment.Center
-                                        // Add rounded corners to the box
-                                    ) {
-                                        Column(
-                                            verticalArrangement = Arrangement.SpaceEvenly,
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                modifier = Modifier.padding(top = 8.dp),
-                                                text = "Select a Place",
-                                                fontSize = 20.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.Black
-                                            )
-                                            Divider(
-                                                Modifier
-                                                    .width(200.dp)
-                                                    .padding(start = 10.dp, end = 10.dp),
-                                                color = Color.Black,
-                                                thickness = 2.dp
-                                            )
-                                            // Stats
-                                            Box(contentAlignment = Alignment.Center)
-                                            {
-                                                Button(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(8.dp),
-                                                    shape = RoundedCornerShape(50.dp),
-                                                    onClick = {
-                                                        showDialog.value = false
-                                                        showCountryDialog.value = true
-                                                        Log.d("clicked", "yes")
-
-                                                    },
-                                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
-                                                )
-                                                {
-                                                    Row (verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.SpaceEvenly){
-                                                        Text(text = "Explore by Stats")
-                                                        Spacer(modifier = Modifier.size(8.dp))
-                                                        Icon(painter = painterResource(id = R.drawable.chart), contentDescription = "df",
-                                                            tint =Color(Color.Green.toArgb()), modifier = Modifier.size(25.dp))
-                                                    }
-
-
-                                                }
-                                            }
-
-
-
-
-                                            LazyColumn(
-                                                verticalArrangement = Arrangement.SpaceEvenly,
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(6.dp)
-                                            ) {
-                                                items(nerfOptions.size) { option ->
-                                                    Text(
-                                                        text = nerfOptions[option].replaceFirstChar { it -> it.uppercase() },
-                                                        color = Color(37, 150, 190),
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 18.sp,
-                                                        overflow = TextOverflow.Ellipsis,// Set the text color to blue
-                                                        modifier = Modifier
-                                                            .padding(8.dp)
-                                                            .clickable {
-                                                                nerfOption = nerfOptions[option]
-                                                                showDialog.value = false
-
-                                                                scope.launch {
-                                                                    try {
-                                                                        withContext(Dispatchers.Main) {
-                                                                            val cameraPosition =
-                                                                                if (nerfOptions[option] == nerfOptions[0]) acropolisCameraPosition else sydneyCameraPosition
-
-                                                                            cameraPositionState.animate(
-                                                                                update = CameraUpdateFactory.zoomBy(
-                                                                                    -20f
-                                                                                ),
-                                                                                1000
-                                                                            )
-                                                                            delay(1000)
-                                                                            cameraPositionState.animate(
-                                                                                update = CameraUpdateFactory.newCameraPosition(
-                                                                                    cameraPosition
-                                                                                ),
-                                                                                3000
-                                                                            )
-                                                                            modalSheetState.show()
-                                                                        }
-                                                                    } catch (e: Exception) {
-                                                                        Log.d(
-                                                                            "failed due to",
-                                                                            e.message.toString()
-                                                                        )
-                                                                    }
-                                                                }
-                                                            }
-                                                    )
-                                                }
-                                            }
-                                        }
-
-
-                                    }
-                                }
-                            }
-
-                        }
+//                        Box(modifier = Modifier.weight(0.4f)) {
+//                            OldExplorePlacesButton(
+//                                showDialog,
+//                                showCountryDialog,
+//                                showBoundary,
+//                                nerfExpanded,
+//                                nerfOptions,
+//                                nerfOption,
+//                                scope,
+//                                cameraPositionState
+//                            )
+//
+//                        }
 
 
                     }
@@ -969,12 +965,906 @@ if(showBoundary.value)
                 )
 //        DebugView(cameraPositionState, singaporeState)
             }
+
         }
 
 
     }
 
 }
+
+@Composable
+private fun OldExplorePlacesButton(
+    showDialog: MutableState<Boolean>,
+    showCountryDialog: MutableState<Boolean>,
+    showBoundary: MutableState<Boolean>,
+    nerfExpanded: Boolean,
+    nerfOptions: List<String>,
+    nerfOption: String,
+    scope: CoroutineScope,
+    cameraPositionState: CameraPositionState
+) {
+    var nerfOption1 = nerfOption
+    Button(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp), shape = RoundedCornerShape(50.dp),
+        onClick = {
+            showDialog.value = !showDialog.value;
+            showCountryDialog.value = false
+            showBoundary.value = false
+            if (layer != null) {
+                layer!!.removeLayerFromMap()
+            }
+
+
+        },
+        colors = ButtonDefaults.buttonColors(
+            backgroundColor = Color(
+                0xFF87CEEB
+            )
+        )
+    ) {
+        Text(text = "Explore Places")
+        // An icon that indicates the expansion state of the menu
+        val icon =
+            if (nerfExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.ArrowDropDown
+        Icon(imageVector = icon, contentDescription = null)
+    }
+
+    if (showDialog.value) {
+        Dialog(
+            onDismissRequest = { showDialog.value = false }
+        ) {
+            // Use a LazyColumn or a VerticalScroller here
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .height(300.dp)
+                    .width(200.dp)
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+                // Add rounded corners to the box
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.SpaceEvenly,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        modifier = Modifier.padding(top = 8.dp),
+                        text = "Select a Place",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Divider(
+                        Modifier
+                            .width(200.dp)
+                            .padding(start = 10.dp, end = 10.dp),
+                        color = Color.Black,
+                        thickness = 2.dp
+                    )
+                    // Stats
+                    Box(contentAlignment = Alignment.Center)
+                    {
+                        Button(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            shape = RoundedCornerShape(50.dp),
+                            onClick = {
+                                showDialog.value = false
+                                showCountryDialog.value = true
+                                Log.d("clicked", "yes")
+
+                            },
+                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
+                        )
+                        {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                Text(text = "Explore by Stats")
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Icon(
+                                    painter = painterResource(id = R.drawable.chart),
+                                    contentDescription = "df",
+                                    tint = Color(Color.Green.toArgb()),
+                                    modifier = Modifier.size(25.dp)
+                                )
+                            }
+
+
+                        }
+                    }
+
+
+
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp)
+                    ) {
+                        items(nerfOptions.size) { option ->
+                            Text(
+                                text = nerfOptions[option].replaceFirstChar { it -> it.uppercase() },
+                                color = Color(37, 150, 190),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                overflow = TextOverflow.Ellipsis,// Set the text color to blue
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .clickable {
+                                        nerfOption1 = nerfOptions[option]
+                                        showDialog.value = false
+
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.Main) {
+                                                    val cameraPosition =
+                                                        if (nerfOptions[option] == nerfOptions[0]) acropolisCameraPosition else sydneyCameraPosition
+
+                                                    cameraPositionState.animate(
+                                                        update = CameraUpdateFactory.zoomBy(
+                                                            -20f
+                                                        ),
+                                                        1000
+                                                    )
+                                                    delay(1000)
+                                                    cameraPositionState.animate(
+                                                        update = CameraUpdateFactory.newCameraPosition(
+                                                            cameraPosition
+                                                        ),
+                                                        3000
+                                                    )
+//                                                                            modalSheetState.show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.d(
+                                                    "failed due to",
+                                                    e.message.toString()
+                                                )
+                                            }
+                                        }
+                                    }
+                            )
+                        }
+                    }
+                }
+
+
+            }
+        }
+    }
+}
+
+@Composable
+private fun NerfItems(
+    options: MutableList<ImageData>,
+    itemNo: MutableState<Int>,
+    itemClicked: MutableState<Boolean>,
+    itemName: MutableState<String>,
+    scope: CoroutineScope,
+    cameraPositionState: CameraPositionState
+) {
+
+    val viewModel  = RegisterViewModel()
+    LazyRow(
+        modifier = Modifier.padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+
+        )
+    {
+        items(options.size)
+        {
+            val isItemSelected = itemNo.value == it
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+
+                Box(
+                    contentAlignment = Alignment.BottomEnd,
+                    modifier = Modifier
+                        .size(height = 120.dp, width = 190.dp)
+                        .border(
+                            width = 2.dp,
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isItemSelected) Color.Green else Color.Black
+                        )
+                        .clip(RoundedCornerShape(15.dp))
+//                                            .background(
+//                                                color = randomColor(),
+//                                                shape = RectangleShape
+//                                            )
+                        .clickable {
+                            if (itemNo.value == it)
+                                itemClicked.value = !itemClicked.value
+                            else
+                                itemClicked.value = true
+                            itemNo.value = it
+                            itemName.value = options[it].name
+                            viewModel.updateLocation(options[it].name)
+                            scope.launch {
+                                try {
+                                    withContext(Dispatchers.Main) {
+                                        val cameraPosition =
+                                            if (options[it] == options[0]) acropolisCameraPosition else sydneyCameraPosition
+
+                                        cameraPositionState.animate(
+                                            update = CameraUpdateFactory.zoomBy(
+                                                -20f
+                                            ),
+                                            1000
+                                        )
+                                        delay(1000)
+                                        cameraPositionState.animate(
+                                            update = CameraUpdateFactory.newCameraPosition(
+                                                cameraPosition
+                                            ),
+                                            3000
+                                        )
+//                                                                            modalSheetState.show()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.d(
+                                        "failed due to",
+                                        e.message.toString()
+                                    )
+                                }
+                            }
+                        }
+                )
+                {
+                    Image(
+                        painter = painterResource(options[it].image),
+                        contentDescription = options[it].name,
+                        contentScale = ContentScale.FillBounds
+                    )
+                }
+
+                Text(
+                    text = options[it].name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+
+            }
+        }
+    }
+}
+
+@Composable
+private fun Body(
+    itemName: MutableState<String>,
+    viewNerf: MutableState<Boolean>,
+    showMap : () -> Unit
+) {
+    Box(
+        modifier = Modifier.animateContentSize()
+    ) {
+        val scope = rememberCoroutineScope()
+        Log.d("yes clicked", "hm")
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly, modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .clip(RoundedCornerShape(20.dp))
+
+                .background(MaterialTheme.colorScheme.background)
+                .padding(10.dp)
+        ) {
+            AssistChip(onClick = { /*TODO*/ }, label = {
+                Log.d("not good", "not good")
+                Text(
+                    text = "Selected: ${itemName.value}",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+                shape = RoundedCornerShape(10.dp),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+
+                FilledTonalButton(onClick = {
+                    viewNerf.value = true
+
+
+                }) {
+                    Text(text = "View in NERF")
+                }
+                FilledTonalButton(onClick = {
+
+                    showMap()
+
+
+                }) {
+                    Text(text = "View in AR")
+                }
+
+            }
+
+        }
+
+
+    }
+}
+
+@Composable
+private fun UploadView() {
+    Box(modifier = Modifier
+
+        .clip(
+            RoundedCornerShape(20.dp)
+        )
+        .fillMaxWidth(0.9f)
+
+        .background(MaterialTheme.colorScheme.background)
+        .clickable { }
+        .padding(all = 30.dp), contentAlignment = Alignment.Center)
+    {
+        Row(
+            Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Upload NERF Data")
+            Spacer(modifier = Modifier.size(5.dp))
+            Icon(
+                tint = MaterialTheme.colorScheme.surfaceTint,
+                modifier = Modifier.size(20.dp),
+                painter = painterResource(id = R.drawable.noun_project_cloud_upload_icon_411593_cc),
+                contentDescription = "upload icon"
+            )
+        }
+
+    }
+}
+
+//@RequiresApi(Build.VERSION_CODES.R)
+//@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+//@OptIn(ExperimentalMaterialApi::class, MapsComposeExperimentalApi::class)
+//@Composable
+//fun GoogleMapView(
+//    modifier: Modifier = Modifier,
+//    cameraPositionState: CameraPositionState = rememberCameraPositionState(),
+//    onMapLoaded: () -> Unit = {},
+//    content: @Composable () -> Unit = {},
+//    playVideo: () -> Unit,
+////    OptedForStats: () -> Unit
+//
+//    ) {
+//
+//    val scope = rememberCoroutineScope()
+//    val singaporeState = rememberMarkerState(position = singapore)
+//    val singapore2State = rememberMarkerState(position = singapore2)
+//    val singapore3State = rememberMarkerState(position = singapore3)
+//    val singapore4State = rememberMarkerState(position = singapore4)
+//    val acropolis = rememberMarkerState()
+//    var circleCenter by remember { mutableStateOf(singapore) }
+//    if (singaporeState.dragState == DragState.END) {
+//        circleCenter = singaporeState.position
+//    }
+//
+//    var uiSettings by remember { mutableStateOf(MapUiSettings(compassEnabled = false)) }
+//    var shouldAnimateZoom by remember { mutableStateOf(true) }
+//    var ticker by remember { mutableStateOf(0) }
+//    var mapProperties by remember {
+//        mutableStateOf(MapProperties(mapType = MapType.HYBRID))
+//    }
+//    var mapVisible by remember { mutableStateOf(true) }
+//    var selectedCountry = remember{ mutableStateOf("") }
+//    val showBoundary = remember{ mutableStateOf(false) }
+//    val showDialog = remember { mutableStateOf(false) }
+//    val showCountryDialog = remember{ mutableStateOf(false) }
+////    LaunchedEffect(key1 = true) {
+////        cameraPositionState.animate(
+////            update = CameraUpdateFactory.newCameraPosition(
+////                CameraPosition(acropolispos, 15f, 0f, 0f)
+////            ),
+////            durationMs = 1000
+////        )
+////    }
+//    val modalSheetState = rememberModalBottomSheetState(
+//        initialValue = ModalBottomSheetValue.Hidden,
+//        confirmValueChange = { it != ModalBottomSheetValue.HalfExpanded },
+//        skipHalfExpanded = false
+//    )
+//    if (mapVisible) {
+//        ModalBottomSheetLayout(sheetState = modalSheetState,
+//            sheetShape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+//            sheetContent = {
+//                Row {
+//                    Button(
+//                        modifier = Modifier
+//                            .weight(0.5f)
+//                            .fillMaxWidth()
+//                            .padding(8.dp), shape = RoundedCornerShape(50.dp),
+//                        onClick = { },
+//                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
+//                    ) {
+//                        Text(text = "View in AR")
+//                        // An icon that indicates the expansion state of the menu
+//
+//                    }
+//                    var s by rememberSaveable { mutableStateOf(false) }
+//                    Button(
+//                        modifier = Modifier
+//                            .weight(0.5f)
+//                            .fillMaxWidth()
+//                            .padding(8.dp), shape = RoundedCornerShape(50.dp),
+//                        onClick = {
+//                           playVideo()
+//                        },
+//                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
+//                    ) {
+//                        Text(text = "View NERF")
+//
+//                    }
+//                }
+//
+//
+//            }) {
+//            GoogleMap(
+//                modifier = modifier,
+//                cameraPositionState = cameraPositionState,
+//                properties = mapProperties,
+//                uiSettings = uiSettings,
+//                onMapLoaded = onMapLoaded,
+//                onPOIClick = {
+//                    Log.d(TAG, "POI clicked: ${it.name}")
+//                }
+//            ) {
+//
+//                val context = LocalContext.current
+//                // Drawing on the map is accomplished with a child-based API
+//
+//                val markerClick: (Marker) -> Boolean = {
+//                    Log.d(TAG, "${it.title} was clicked")
+//                    cameraPositionState.projection?.let { projection ->
+//                        Log.d(TAG, "The current projection is: $projection")
+//                    }
+//                    false
+//                }
+//                BackHandler {
+//                    if(layer != null)
+//                    {
+//                        layer!!.removeLayerFromMap()
+//                    }
+//                }
+//if(showBoundary.value)
+//{
+//
+//    MapEffect(key1 = Unit)
+//    {
+//        try {
+//            val selectedCountryResource = getResourceIdForCountryName(formatCountryName(selectedCountry.value), context)
+//
+//             layer = GeoJsonLayer(it, selectedCountryResource, context)
+//
+//            val style = layer!!.defaultPolygonStyle
+//            // style.fillColor = Color.MAGENTA
+//            style.strokeColor = android.graphics.Color.RED
+//            style.strokeWidth = 6f
+//            layer!!.addLayerToMap()
+//        }
+//        catch ( ex: IOException) {
+//            Log.e("IOException", ex.getLocalizedMessage());
+//        } catch ( ex: JSONException) {
+//            Log.e("JSONException", ex.getLocalizedMessage());
+//        }
+//
+//    }
+//
+//}
+//
+//
+//
+//
+//
+//
+////            MarkerInfoWindowContent(
+////                state = singaporeState,
+////                title = "Zoom in has been tapped $ticker times.",
+////                onClick = markerClick,
+////                draggable = true,
+////            ) {
+////                Text(it.title ?: "Title", color = Color.Red)
+////            }
+////            MarkerInfoWindowContent(
+////                state = singapore2State,
+////                title = "Marker with custom info window.\nZoom in has been tapped $ticker times.",
+////                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE),
+////                onClick = markerClick,
+////            ) {
+////                Text(it.title ?: "Title", color = Color.Blue)
+////            }
+////            Marker(
+////                state = singapore3State,
+////                title = "Marker in Singapore",
+////                onClick = markerClick
+////            )
+////            MarkerComposable(
+////                title = "Marker Composable",
+////                keys = arrayOf("singapore4"),
+////                state = singapore4State,
+////                onClick = markerClick,
+////            ) {
+////                Box(
+////                    modifier = Modifier
+////                        .width(88.dp)
+////                        .height(36.dp)
+////                        .clip(RoundedCornerShape(16.dp))
+////                        .background(Color.Red),
+////                    contentAlignment = Alignment.Center,
+////                ) {
+////                ) {
+////                    Text(
+////                        text = "Compose Marker",
+////                        textAlign = TextAlign.Center,
+////                    )
+////                }
+////            }
+////            Circle(
+////                center = circleCenter,
+////                fillColor = MaterialTheme.colors.secondary,
+////                strokeColor = MaterialTheme.colors.secondaryVariant,
+////                radius = 1000.0,
+////            )
+//                content()
+//
+//            }
+//            if(showCountryDialog.value)
+//            {
+//                ShowCountryList()
+//                {
+//                    showBoundary.value = true
+//                    selectedCountry.value = it
+//                }
+//            }
+//            Column {
+////
+////        MapTypeButton(type = Map) {
+////
+////        }
+////        MapTypeControls(onMapTypeClick = {
+////            Log.d("GoogleMap", "Selected map type $it")
+////            mapProperties = mapProperties.copy(mapType = it)
+////        })
+//                Row {
+////            MapButton(
+////                text = "Reset Map",
+////                onClick = {
+////                    mapProperties = mapProperties.copy(mapType = MapType.NORMAL)
+////                    cameraPositionState.position = defaultCameraPosition
+////                    singaporeState.position = singapore
+////                    singaporeState.hideInfoWindow()
+////                }
+////            )
+////            MapButton(
+////                text = "Toggle Map",
+////                onClick = { mapVisible = !mapVisible },
+////                modifier = Modifier.testTag("toggleMapVisibility"),
+////            )
+//
+//
+//                    val mapTypes = listOf(
+//                        MapType.NONE,
+//                        MapType.NORMAL,
+//                        MapType.SATELLITE,
+//                        MapType.TERRAIN,
+//                        MapType.HYBRID
+//                    )
+//                    // A state variable to store the selected map type
+//                    var mapType by remember { mutableStateOf(mapTypes[0]) }
+//                    // A state variable to control the expansion of the Map Type menu
+//                    var mapTypeExpanded = remember { mutableStateOf(false) }
+//
+//                    // A list of options for the NERF button
+//                    val nerfOptions =
+//                        listOf("Arcopolis of Athens", "Opera House", "place3", "place4")
+//                    // A state variable to store the selected NERF option
+//                    var nerfOption by remember { mutableStateOf(nerfOptions[0]) }
+//                    // A state variable to control the expansion of the NERF menu
+//                    var nerfExpanded by remember { mutableStateOf(false) }
+//
+//                    // A modifier to align the menus with the buttons
+////            val menuAnchor = Modifier.menuAnchor()
+//
+//                    // A row that contains the two buttons
+//                    Row(
+//                        modifier = Modifier.fillMaxWidth(),
+//                        horizontalArrangement = Arrangement.Center,
+//                        verticalAlignment = Alignment.CenterVertically
+//                    ) {
+//                        // The Map Type button that shows the selected map type and toggles the menu
+//                        Box(modifier = Modifier.weight(0.4f)) {
+//                            Button(
+//                                modifier = Modifier
+//                                    .fillMaxWidth()
+//                                    .padding(8.dp), shape = RoundedCornerShape(50.dp),
+//                                onClick = { mapTypeExpanded.value = !mapTypeExpanded.value },
+//                                colors = ButtonDefaults.buttonColors(
+//                                    backgroundColor = Color(
+//                                        0xFF87CEEB
+//                                    )
+//                                )
+//                            ) {
+//                                Text(text = "Map Type")
+//
+//                            }
+//                            if (mapTypeExpanded.value) {
+//                                Dialog(onDismissRequest = { mapTypeExpanded.value = false }) {
+//                                    Box(
+//                                        modifier = Modifier
+//                                            .clip(RoundedCornerShape(16.dp))
+//                                            .height(300.dp)
+//                                            .width(200.dp)
+//                                            .background(Color.White),
+//                                        contentAlignment = Alignment.Center
+//                                        // Add rounded corners to the box
+//                                    )
+//                                    {
+//                                        Column(
+//                                            verticalArrangement = Arrangement.SpaceEvenly,
+//                                            horizontalAlignment = Alignment.CenterHorizontally
+//                                        ) {
+//                                            Text(
+//                                                modifier = Modifier.padding(top = 8.dp),
+//                                                text = "Select Map Type",
+//                                                fontSize = 20.sp,
+//                                                fontWeight = FontWeight.Bold,
+//                                                color = Color.Black
+//                                            )
+//                                            Divider(
+//                                                Modifier
+//                                                    .width(200.dp)
+//                                                    .padding(start = 10.dp, end = 10.dp),
+//                                                color = Color.Black,
+//                                                thickness = 2.dp
+//                                            )
+//                                            LazyColumn(
+//                                                verticalArrangement = Arrangement.SpaceEvenly,
+//                                                horizontalAlignment = Alignment.CenterHorizontally,
+//                                                modifier = Modifier
+//                                                    .fillMaxSize()
+//                                                    .padding(6.dp)
+//                                            ) {
+//                                                items(mapTypes.size) { option ->
+//                                                    Text(
+//                                                        text = mapTypes[option].toString(),
+//                                                        color = Color(37, 150, 190),
+//                                                        fontWeight = FontWeight.Bold,
+//                                                        fontSize = 18.sp,
+//                                                        overflow = TextOverflow.Ellipsis,// Set the text color to blue
+//                                                        modifier = Modifier
+//                                                            .padding(8.dp)
+//                                                            .clickable {
+//                                                                mapProperties =
+//                                                                    mapProperties.copy(mapType = mapTypes[option])
+//                                                                mapTypeExpanded.value = false
+//                                                            }
+//                                                    )
+//                                                }
+//                                            }
+//                                        }
+//                                    }
+//                                }
+//
+//                            }
+//
+//                        }
+//
+//
+//
+//                        Box(modifier = Modifier.weight(0.4f)) {
+//                            Button(
+//                                modifier = Modifier
+//                                    .fillMaxWidth()
+//                                    .padding(8.dp), shape = RoundedCornerShape(50.dp),
+//                                onClick = { showDialog.value = !showDialog.value;
+//                                            showCountryDialog.value = false
+//                                            showBoundary.value = false
+//                                            if(layer != null)
+//                                            {
+//                                                layer!!.removeLayerFromMap()
+//                                            }
+//
+//
+//
+//                                          },
+//                                colors = ButtonDefaults.buttonColors(
+//                                    backgroundColor = Color(
+//                                        0xFF87CEEB
+//                                    )
+//                                )
+//                            ) {
+//                                Text(text = "Explore Places")
+//                                // An icon that indicates the expansion state of the menu
+//                                val icon =
+//                                    if (nerfExpanded) Icons.Filled.ArrowDropDown else Icons.Filled.ArrowDropDown
+//                                Icon(imageVector = icon, contentDescription = null)
+//                            }
+//
+//                            if (showDialog.value) {
+//                                Dialog(
+//                                    onDismissRequest = { showDialog.value = false }
+//                                ) {
+//                                    // Use a LazyColumn or a VerticalScroller here
+//                                    Box(
+//                                        modifier = Modifier
+//                                            .clip(RoundedCornerShape(16.dp))
+//                                            .height(300.dp)
+//                                            .width(200.dp)
+//                                            .background(Color.White),
+//                                        contentAlignment = Alignment.Center
+//                                        // Add rounded corners to the box
+//                                    ) {
+//                                        Column(
+//                                            verticalArrangement = Arrangement.SpaceEvenly,
+//                                            horizontalAlignment = Alignment.CenterHorizontally
+//                                        ) {
+//                                            Text(
+//                                                modifier = Modifier.padding(top = 8.dp),
+//                                                text = "Select a Place",
+//                                                fontSize = 20.sp,
+//                                                fontWeight = FontWeight.Bold,
+//                                                color = Color.Black
+//                                            )
+//                                            Divider(
+//                                                Modifier
+//                                                    .width(200.dp)
+//                                                    .padding(start = 10.dp, end = 10.dp),
+//                                                color = Color.Black,
+//                                                thickness = 2.dp
+//                                            )
+//                                            // Stats
+//                                            Box(contentAlignment = Alignment.Center)
+//                                            {
+//                                                Button(
+//                                                    modifier = Modifier
+//                                                        .fillMaxWidth()
+//                                                        .padding(8.dp),
+//                                                    shape = RoundedCornerShape(50.dp),
+//                                                    onClick = {
+//                                                        showDialog.value = false
+//                                                        showCountryDialog.value = true
+//                                                        Log.d("clicked", "yes")
+//
+//                                                    },
+//                                                    colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF87CEEB))
+//                                                )
+//                                                {
+//                                                    Row (verticalAlignment = Alignment.CenterVertically,
+//                                                        horizontalArrangement = Arrangement.SpaceEvenly){
+//                                                        Text(text = "Explore by Stats")
+//                                                        Spacer(modifier = Modifier.size(8.dp))
+//                                                        Icon(painter = painterResource(id = R.drawable.chart), contentDescription = "df",
+//                                                            tint =Color(Color.Green.toArgb()), modifier = Modifier.size(25.dp))
+//                                                    }
+//
+//
+//                                                }
+//                                            }
+//
+//
+//
+//
+//                                            LazyColumn(
+//                                                verticalArrangement = Arrangement.SpaceEvenly,
+//                                                horizontalAlignment = Alignment.CenterHorizontally,
+//                                                modifier = Modifier
+//                                                    .fillMaxSize()
+//                                                    .padding(6.dp)
+//                                            ) {
+//                                                items(nerfOptions.size) { option ->
+//                                                    Text(
+//                                                        text = nerfOptions[option].replaceFirstChar { it -> it.uppercase() },
+//                                                        color = Color(37, 150, 190),
+//                                                        fontWeight = FontWeight.Bold,
+//                                                        fontSize = 18.sp,
+//                                                        overflow = TextOverflow.Ellipsis,// Set the text color to blue
+//                                                        modifier = Modifier
+//                                                            .padding(8.dp)
+//                                                            .clickable {
+//                                                                nerfOption = nerfOptions[option]
+//                                                                showDialog.value = false
+//
+//                                                                scope.launch {
+//                                                                    try {
+//                                                                        withContext(Dispatchers.Main) {
+//                                                                            val cameraPosition =
+//                                                                                if (nerfOptions[option] == nerfOptions[0]) acropolisCameraPosition else sydneyCameraPosition
+//
+//                                                                            cameraPositionState.animate(
+//                                                                                update = CameraUpdateFactory.zoomBy(
+//                                                                                    -20f
+//                                                                                ),
+//                                                                                1000
+//                                                                            )
+//                                                                            delay(1000)
+//                                                                            cameraPositionState.animate(
+//                                                                                update = CameraUpdateFactory.newCameraPosition(
+//                                                                                    cameraPosition
+//                                                                                ),
+//                                                                                3000
+//                                                                            )
+//                                                                            modalSheetState.show()
+//                                                                        }
+//                                                                    } catch (e: Exception) {
+//                                                                        Log.d(
+//                                                                            "failed due to",
+//                                                                            e.message.toString()
+//                                                                        )
+//                                                                    }
+//                                                                }
+//                                                            }
+//                                                    )
+//                                                }
+//                                            }
+//                                        }
+//
+//
+//                                    }
+//                                }
+//                            }
+//
+//                        }
+//
+//
+//                    }
+//
+//
+//                }
+//                val coroutineScope = rememberCoroutineScope()
+//                ZoomControls(
+//                    shouldAnimateZoom,
+//                    uiSettings.zoomControlsEnabled,
+//                    onZoomOut = {
+//                        if (shouldAnimateZoom) {
+//                            coroutineScope.launch {
+//                                cameraPositionState.animate(CameraUpdateFactory.zoomOut())
+//                            }
+//                        } else {
+//                            cameraPositionState.move(CameraUpdateFactory.zoomOut())
+//                        }
+//                    },
+//                    onZoomIn = {
+//                        if (shouldAnimateZoom) {
+//                            coroutineScope.launch {
+//                                cameraPositionState.animate(CameraUpdateFactory.zoomIn())
+//                            }
+//                        } else {
+//                            cameraPositionState.move(CameraUpdateFactory.zoomIn())
+//                        }
+//                        ticker++
+//                    },
+//                    onCameraAnimationCheckedChange = {
+//                        shouldAnimateZoom = it
+//                    },
+//                    onZoomControlsCheckedChange = {
+//                        uiSettings = uiSettings.copy(zoomControlsEnabled = it)
+//                    }
+//                )
+////        DebugView(cameraPositionState, singaporeState)
+//            }
+//        }
+//
+//
+//    }
+//
+//}
 
 @Composable
 private fun MapTypeControls(
@@ -1029,12 +1919,12 @@ private fun MapButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
     Button(
         modifier = modifier.padding(4.dp),
         colors = ButtonDefaults.buttonColors(
-            backgroundColor = MaterialTheme.colors.onPrimary,
-            contentColor = MaterialTheme.colors.primary
+            backgroundColor = MaterialTheme.colorScheme.onPrimary,
+            contentColor = MaterialTheme.colorScheme.primary
         ),
         onClick = onClick
     ) {
-        Text(text = text, style = MaterialTheme.typography.body1)
+        Text(text = text, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

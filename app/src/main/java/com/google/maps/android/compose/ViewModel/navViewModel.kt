@@ -10,6 +10,10 @@ class RegisterViewModel  : ViewModel()
 {
     private val _fromActivity = MutableStateFlow<Boolean>(false)
     val fromActivity: StateFlow<Boolean> = _fromActivity.asStateFlow()
+
+
+    private val _selectedPlace = MutableStateFlow<String>("")
+    val selectedPlace: StateFlow<String> = _selectedPlace.asStateFlow()
     fun goBack()
     {
         Log.d("modelvaluebefore","$_fromActivity.value.toString()  ${fromActivity.value.toString()}")
@@ -17,6 +21,13 @@ class RegisterViewModel  : ViewModel()
         }
         Log.d("modelvalueafter","$_fromActivity.value.toString()   ${fromActivity.value.toString()}")
 
+    }
+
+    fun updateLocation(add:String)
+    {
+        Log.d("before", _selectedPlace.value.toString())
+        _selectedPlace.update { add }
+        Log.d("beforea", _selectedPlace.value.toString())
     }
     fun reset()
     {
