@@ -14,9 +14,13 @@
 
 package com.google.maps.android.compose
 
+import android.content.Intent
+import android.location.Location
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -49,24 +53,29 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Divider
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Icon
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.BottomSheetScaffoldState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +86,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -85,6 +97,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat.startActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -92,28 +105,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
-import com.google.maps.android.compose.Navigation.Screens
-import com.google.maps.android.compose.ViewModel.RegisterViewModel
-import com.google.maps.android.data.geojson.GeoJsonLayer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.runtime.MutableState
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.Dash
-import com.google.android.gms.maps.model.Dot
-import com.google.android.gms.maps.model.Gap
-import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.maps.android.PolyUtil
+import com.google.maps.android.compose.Navigation.Screens
+import com.google.maps.android.compose.ViewModel.RegisterViewModel
 import com.google.maps.android.compose.model.ImageData
 import com.google.maps.android.compose.theme.MapsComposeSampleTheme
+import com.google.maps.android.data.geojson.GeoJsonLayer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONException
@@ -132,8 +137,8 @@ val defaultCameraPosition = CameraPosition.fromLatLngZoom(singapore, 11f)
 val acropolisCameraPosition = CameraPosition.fromLatLngZoom(acropolispos, 16f)
 val sydneyCameraPosition = CameraPosition.fromLatLngZoom(sydenypos, 16f)
 val abode = CameraPosition.fromLatLngZoom(myLcoation, 20f)
-var layer : GeoJsonLayer? = null
-
+var layer: GeoJsonLayer? = null
+private var currentLocation: Location? = null
 
 class BasicMapActivity : ComponentActivity() {
 
@@ -147,28 +152,38 @@ class BasicMapActivity : ComponentActivity() {
 
         setContent {
 
-                MapsComposeSampleTheme(darkTheme = true) {
-                    MainScreen(comingFromActivity = false)
-                }
+            MapsComposeSampleTheme(darkTheme = true) {
+                MainScreen(comingFromActivity = false)
+            }
 
         }
     }
 }
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RequiresApi(Build.VERSION_CODES.R)
 @Composable
-fun MainScreen(comingFromActivity: Boolean)
-{
+fun MainScreen(comingFromActivity: Boolean) {
 
     val context = LocalContext.current
     val navController: NavHostController = rememberNavController()
 
     NavHost(
         navController = navController,
-        startDestination = Screens.BasicsMapActivity.route
+        startDestination = Screens.SplashScreen.route
     )
     {
-
+        composable(route = Screens.SplashScreen.route)
+        {
+            SplashScreen {
+                navController.navigate(Screens.BasicsMapActivity.route){
+                    popUpTo(route = Screens.SplashScreen.route)
+                    {
+                        inclusive = true
+                    }
+                }
+            }
+        }
 
         composable(route = Screens.BasicsMapActivity.route)
         {
@@ -189,7 +204,6 @@ fun MainScreen(comingFromActivity: Boolean)
                     playVideo = {
                         navController.navigate(Screens.VideoPlayerScreen.route)
                     }
-
 
                 )
                 if (!isMapLoaded) {
@@ -232,53 +246,47 @@ fun MainScreen(comingFromActivity: Boolean)
 }
 
 @Composable
-fun ShowCountryList(showBoundary : (String) -> Unit)
-{
+fun ShowCountryList(showBoundary: (String) -> Unit) {
 
     val showDialog = remember { mutableStateOf(true) }
-    val selectedCountry = remember{ mutableStateOf("") }
-    var selectedStats = remember{ mutableStateOf("") }
-    var isCountrySelected by remember{ mutableStateOf(false) }
+    val selectedCountry = remember { mutableStateOf("") }
+    var selectedStats = remember { mutableStateOf("") }
+    var isCountrySelected by remember { mutableStateOf(false) }
     var showCountryDialog by remember {
         mutableStateOf(false)
     }
 
     val typeOfStats = listOf<String>("Real GDP", "Population Growth")
-    val listOfCountry = remember{ mutableStateOf(listOf("")) }
-    val showGraph = remember{ mutableStateOf(false) }
+    val listOfCountry = remember { mutableStateOf(listOf("")) }
+    val showGraph = remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
-    if(showGraph.value)
-    {
-        Log.d("under show graph","hmm")
+    if (showGraph.value) {
+        Log.d("under show graph", "hmm")
         showBoundary(selectedCountry.value)
 
-        if (selectedStats.value == typeOfStats[0])
-        {
+        if (selectedStats.value == typeOfStats[0]) {
 
             GDPGraph(selectedCountry.value)
             val context = LocalContext.current
             // Drawing on the map is accomplished witht a child-based API
 
-        }
-        else
+        } else
             PopulationGraph(context)
         BackHandler {
             layer!!.removeLayerFromMap()
             showGraph.value = false
         }
     }
-    if(showCountryDialog)
-    {
+    if (showCountryDialog) {
         Log.d("undershowCountryDialog", selectedStats.toString())
 
-        val gotList = remember{ mutableStateOf(false) }
+        val gotList = remember { mutableStateOf(false) }
         LaunchedEffect(Unit)
         {
             Log.d("underLaunchedEFFEct", selectedStats.toString())
-            if(selectedStats.value == typeOfStats[0])
-            {
+            if (selectedStats.value == typeOfStats[0]) {
                 Log.d("underLaunchedEFFEctIf", "true")
                 try {
                     withContext(Dispatchers.IO)
@@ -288,17 +296,12 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
                         listOfCountry.value = obj.listOfCountryNames
                         gotList.value = true
                     }
-                }
-                catch (e : Exception)
-                {
+                } catch (e: Exception) {
                     Log.d("exception", e.message.toString())
                 }
 
-            }
-            else
-            {
-                if(selectedStats.value == typeOfStats[1])
-                {
+            } else {
+                if (selectedStats.value == typeOfStats[1]) {
                     try {
                         withContext(Dispatchers.IO)
                         {
@@ -307,9 +310,7 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
                             gotList.value = true
                             Log.d("listis", listOfCountry.toString())
                         }
-                    }
-                    catch (e : Exception)
-                    {
+                    } catch (e: Exception) {
                         Log.d("exception", e.message.toString())
                     }
                 }
@@ -318,8 +319,7 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
         }
 
 
-        if(gotList.value)
-        {
+        if (gotList.value) {
             Log.d("under got list", listOfCountry.toString())
             Dialog(onDismissRequest = { showCountryDialog = false }) {
                 Box(
@@ -350,12 +350,12 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
                             color = Color.Black,
                             thickness = 2.dp
                         )
-                        LazyColumn{
+                        LazyColumn {
 
-                            items(listOfCountry.value!!.size)
+                            items(listOfCountry.value.size)
                             { option ->
                                 Text(
-                                    text = listOfCountry.value!![option],
+                                    text = listOfCountry.value[option],
                                     color = Color(37, 150, 190),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
@@ -363,7 +363,7 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
                                     modifier = Modifier
                                         .padding(8.dp)
                                         .clickable {
-                                            selectedCountry.value = listOfCountry.value!![option]
+                                            selectedCountry.value = listOfCountry.value[option]
                                             showCountryDialog = false
                                             showGraph.value = true
 
@@ -414,7 +414,7 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
                         color = Color.Black,
                         thickness = 2.dp
                     )
-                    LazyColumn{
+                    LazyColumn {
                         items(typeOfStats.size)
                         { option ->
                             Text(
@@ -451,20 +451,19 @@ fun ShowCountryList(showBoundary : (String) -> Unit)
         }
 
 
-
     }
 }
 
 @Composable
-fun Test()
-{
+fun Test() {
     val model: RegisterViewModel = viewModel()
     model.goBack()
 }
 
 @RequiresApi(Build.VERSION_CODES.R)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@OptIn(ExperimentalMaterialApi::class, MapsComposeExperimentalApi::class,
+@OptIn(
+    ExperimentalMaterialApi::class, MapsComposeExperimentalApi::class,
     ExperimentalMaterial3Api::class
 )
 @Composable
@@ -496,37 +495,40 @@ fun GoogleMapView(
         mutableStateOf(MapProperties(mapType = MapType.HYBRID))
     }
     var mapVisible by remember { mutableStateOf(true) }
-    var selectedCountry = remember{ mutableStateOf("") }
-    val showBoundary = remember{ mutableStateOf(false) }
-    val showDialog = remember { mutableStateOf(false) }
-    val showCountryDialog = remember{ mutableStateOf(false) }
-    val stateOfScaffold = rememberBottomSheetScaffoldState()
+    var selectedCountry = remember { mutableStateOf("") }
+    val showBoundary = remember { mutableStateOf(false) }
+    val LatLng = remember { mutableStateOf(LatLng(0.0, 0.0)) }
+    val showCountryDialog = remember { mutableStateOf(false) }
+    val stateOfScaffold = rememberBottomSheetScaffoldState(bottomSheetState = SheetState(skipPartiallyExpanded = false,
+        initialValue = SheetValue.Expanded))
     val viewModel: RegisterViewModel = viewModel()
-    val line = remember{ mutableStateOf("") }
-    val showDirection = remember{ mutableStateOf(false) }
-    val enableButton = remember {
+    val line = remember { mutableStateOf("") }
+    val showDirection = remember { mutableStateOf(false) }
+    val LocateButton = remember {
         mutableStateOf(false)
     }
+    val MarkerPlaced = remember{ mutableStateOf(false) }
+    val showMarker = remember { mutableStateOf(false) }
     val options =
         mutableListOf(
             ImageData(
                 "Archopolis of Athens",
                 R.drawable.archopolis,
-                Color(232,222,248)
+                Color(232, 222, 248)
             ),
             ImageData(
                 "Opera House",
                 R.drawable.sydney,
-                Color(232,222,248)
+                Color(232, 222, 248)
             )
 
         )
-    for(i in 1..8)
-        options.add(ImageData("Sample Image", R.drawable.eifeltower, Color(232,222,248)))
+    for (i in 1..8)
+        options.add(ImageData("Sample Image", R.drawable.eifeltower, Color(232, 222, 248)))
 
 
     if (mapVisible) {
-
+    val markerPos = remember{ mutableStateOf(LatLng(0.0,0.0)) }
         BottomSheetScaffold(modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -540,151 +542,38 @@ fun GoogleMapView(
                     }
                 })
             },
-            scaffoldState = stateOfScaffold,sheetPeekHeight = 40.dp, sheetDragHandle = {
-            BottomSheetDefaults.DragHandle(
-                width = 60.dp,
-                modifier = Modifier.offset(y = (-5).dp)
-            )
-        },
+            scaffoldState = stateOfScaffold, sheetPeekHeight = 40.dp, sheetDragHandle = {
+                BottomSheetDefaults.DragHandle(
+                    width = 60.dp,
+                    modifier = Modifier.offset(y = (-5).dp)
+                )
+            },
             sheetContent = {
+    if(!LocateButton.value)
+    {
 
-                Box(
-                    modifier = Modifier
-                        .animateContentSize()
-                        .fillMaxWidth()
-                        .padding(5.dp)
-                ) {
-
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                        ,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-
-                        val itemClicked = remember { mutableStateOf(false) }
-                        val itemNo = remember { mutableStateOf(-1) }
-                        val itemName = remember{ mutableStateOf("") }
-
-                        LaunchedEffect(stateOfScaffold.bottomSheetState.currentValue) {
-                           itemNo.value = -1
-                            itemClicked.value = false
-                            delay(400)
-                            if(stateOfScaffold.bottomSheetState.hasExpandedState && enableButton.value)
-                            {
-
-                                enableButton.value = false
-                            }
-                        }
-
-                        AssistChip(onClick = { /*TODO*/ }, label = {
-                            Log.d("not good", "not good")
-                            Text(text = "Explore Places", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
-                        )
-                        Spacer(modifier = Modifier.size(5.dp))
-                        Divider()
-                        val colors = listOf<Color>(Color.Green, Color.Yellow)
-                        val viewNerf = remember { mutableStateOf(false) }
-                        if(!viewNerf.value)
-                        {
-                            NerfItems(
-                                options,
-                                itemNo,
-                                itemClicked,
-                                itemName,
-                                scope,
-                                cameraPositionState
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.size(15.dp))
-                        val density = LocalDensity.current
-
-                        AnimatedVisibility(
-                            itemClicked.value && !viewNerf.value,
-                            enter = expandIn()
-                        ) {
-                            Body(itemName, viewNerf){
-
-                                scope.launch {
-
-                                    stateOfScaffold.bottomSheetState.partialExpand()
-
-                                        try {
-                                            withContext(Dispatchers.Main) {
-                                                val cameraPosition = abode
-                                                cameraPositionState.animate(
-                                                    update = CameraUpdateFactory.zoomBy(
-                                                        -20f
-                                                    ),
-                                                    1000
-                                                )
-                                                delay(1000)
-                                                cameraPositionState.animate(
-                                                    update = CameraUpdateFactory.newCameraPosition(
-                                                        cameraPosition
-                                                    ),
-                                                    3000
-                                                )
-
-//
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.d(
-                                                "failed due to",
-                                                e.message.toString()
-                                            )
-                                        }
-
-                                }
-
-                            }
-
-                        }
-
-                        if(viewNerf.value){
-                            val configuraiton = LocalConfiguration.current
-                            val width = configuraiton.screenWidthDp.dp
-                            val height = configuraiton.screenHeightDp.dp
-                            Column {
-                                Box(modifier = Modifier
-
-                                    .clip(
-                                        RoundedCornerShape(5.dp)
-                                    )
-                                    .fillMaxWidth()
-                                    .height((height / 3))
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .clickable { }, contentAlignment = Alignment.Center)
-                                {
-
-
-                                    PlayVideo() {
-                                        viewNerf.value = false
-                                    }
-
-                                }
-                                OptionsInVideo(viewModel){
-                                    line.value = it
-                                    showDirection.value = true
-                                }
-                                Spacer(modifier = Modifier.size(15.dp))
-                            }
-                        }
-                        Spacer(modifier = Modifier.size(15.dp))
-                        UploadView()
+        SheetContent(
+            stateOfScaffold,
+            options,
+            scope,
+            cameraPositionState,
+            LatLng,
+            showMarker,
+            LocateButton,
+            viewModel,
+            line,
+            showDirection,
+            MarkerPlaced
+        )
+    }
+                else{
+                    ARUtil(MarkerPlaced, stateOfScaffold) {
 
                     }
-                }
-
+    }
 
 
             }) {
-
 
             GoogleMap(
                 modifier = modifier.fillMaxSize(),
@@ -695,12 +584,28 @@ fun GoogleMapView(
                 onPOIClick = {
                     Log.d(TAG, "POI clicked: ${it.name}")
                 }
+                ,
+                onMapClick = {
+                    Log.d("Map is clicked", "yes")
+                    MarkerPlaced.value = true
+                    markerPos.value = it
+                }
             ) {
 
                 Marker()
 
+                if (showMarker.value) {
+                    MarkerInfoWindowContent(state = MarkerState(LatLng.value)) {
+
+                    }
+
+                }
+                if(MarkerPlaced.value)
+                {
+                    Marker(state = MarkerState(markerPos.value))
+                }
                 val context = LocalContext.current
-                // Drawing on the map is accomplished with a child-based API
+
 
                 val markerClick: (Marker) -> Boolean = {
                     Log.d(TAG, "${it.title} was clicked")
@@ -710,22 +615,26 @@ fun GoogleMapView(
                     false
                 }
                 BackHandler {
-                    if(layer != null)
-                    {
+                    if (layer != null) {
                         layer!!.removeLayerFromMap()
                         showDirection.value = false
+
                     }
+                    LocateButton.value = false
+                    MarkerPlaced.value = false
+                    showMarker.value = false
                 }
 
 
-                if(showDirection.value){
+                if (showDirection.value) {
                     val PATTERN_DASH_LENGTH_PX = 20f // The length of each dash in pixels
                     val PATTERN_GAP_LENGTH_PX = 20f // The gap between each dash in pixels
                     val DASH = Dash(PATTERN_DASH_LENGTH_PX) // A dash pattern item
                     val GAP = Gap(PATTERN_GAP_LENGTH_PX) // A gap pattern item
                     val PATTERN_POLYLINE_DASH = listOf(DASH, GAP)
                     Log.d("underthis", "${line.value}")
-                    val decodedPolyline = PolyUtil.decode("~jvmEgxyy[dCXQlAY`D@h@@Vz@_@dB}@bBcAnB_A~@q@b@k@`@}@XeALqAIuCMqAu@cEWyB_@iAg@eAQUuAcAsAa@MDeAIaBCe@CqGIw@Gw@[][]y@Ma@JcEW{G?eAJ}C^gHZgEVqC_AQ_GYqF_@\\iFL_B_TyAe@M}Im@uDSoFi@a@MGLM@KK?A")
+                    val decodedPolyline =
+                        PolyUtil.decode("~jvmEgxyy[dCXQlAY`D@h@@Vz@_@dB}@bBcAnB_A~@q@b@k@`@}@XeALqAIuCMqAu@cEWyB_@iAg@eAQUuAcAsAa@MDeAIaBCe@CqGIw@Gw@[][]y@Ma@JcEW{G?eAJ}C^gHZgEVqC_AQ_GYqF_@\\iFL_B_TyAe@M}Im@uDSoFi@a@MGLM@KK?A")
                     val polylineOptions = PolylineOptions()
                         .width(10f)
                         .color(0xFFFF0000.toInt())
@@ -735,22 +644,17 @@ fun GoogleMapView(
                         it.addPolyline(polylineOptions.addAll(decodedPolyline))
 
                     }
-                    if(enableButton.value)
-                    {
-
-                        Marker(state = rememberMarkerState(position = myLcoation),
-                            title = "Abode Valley",
-                            icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
-                    }
 
                 }
-                if(showBoundary.value)
-                {
+                if (showBoundary.value) {
 
                     MapEffect(key1 = Unit)
                     {
                         try {
-                            val selectedCountryResource = getResourceIdForCountryName(formatCountryName(selectedCountry.value), context)
+                            val selectedCountryResource = getResourceIdForCountryName(
+                                formatCountryName(selectedCountry.value),
+                                context
+                            )
 
                             layer = GeoJsonLayer(it, selectedCountryResource, context)
 
@@ -759,11 +663,10 @@ fun GoogleMapView(
                             style.strokeColor = android.graphics.Color.RED
                             style.strokeWidth = 6f
                             layer!!.addLayerToMap()
-                        }
-                        catch ( ex: IOException) {
-                            Log.e("IOException", ex.getLocalizedMessage());
-                        } catch ( ex: JSONException) {
-                            Log.e("JSONException", ex.getLocalizedMessage());
+                        } catch (ex: IOException) {
+                            Log.e("IOException", ex.localizedMessage)
+                        } catch (ex: JSONException) {
+                            Log.e("JSONException", ex.localizedMessage)
                         }
 
                     }
@@ -772,8 +675,8 @@ fun GoogleMapView(
                 content()
 
             }
-            if(showCountryDialog.value)
-            {
+
+            if (showCountryDialog.value) {
                 ShowCountryList()
                 {
                     showBoundary.value = true
@@ -782,7 +685,6 @@ fun GoogleMapView(
             }
             Column {
                 Row {
-
 
 
                     val mapTypes = listOf(
@@ -830,25 +732,6 @@ fun GoogleMapView(
 //
 //
 //                            }
-                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center)
-                            {
-                                if(enableButton.value)
-                                {
-                                    AssistChip(onClick = { /*TODO*/ }, label = {
-                                        Log.d("not good", "not good")
-                                        Text(
-                                            text = "Select Location",
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                                        border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
-                                    )
-                                }
-                            }
-
-
 
 //                            if (mapTypeExpanded.value) {
 //                                Dialog(onDismissRequest = { mapTypeExpanded.value = false }) {
@@ -913,7 +796,6 @@ fun GoogleMapView(
                         }
 
 
-
 //                        Box(modifier = Modifier.weight(0.4f)) {
 //                            OldExplorePlacesButton(
 //                                showDialog,
@@ -973,6 +855,169 @@ fun GoogleMapView(
 
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SheetContent(
+    stateOfScaffold: BottomSheetScaffoldState,
+    options: MutableList<ImageData>,
+    scope: CoroutineScope,
+    cameraPositionState: CameraPositionState,
+    LatLng: MutableState<LatLng>,
+    showMarker: MutableState<Boolean>,
+    LocateButton: MutableState<Boolean>,
+    viewModel: RegisterViewModel,
+    line: MutableState<String>,
+    showDirection: MutableState<Boolean>,
+    MarkerPlaced : MutableState<Boolean>
+) {
+    Box(
+        modifier = Modifier
+            .animateContentSize()
+            .fillMaxWidth()
+            .padding(5.dp)
+    ) {
+
+        Column(
+            Modifier
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+
+            val itemClicked = remember { mutableStateOf(false) }
+            val itemNo = remember { mutableStateOf(-1) }
+            val itemName = remember { mutableStateOf("") }
+
+            LaunchedEffect(stateOfScaffold.bottomSheetState.currentValue) {
+                itemNo.value = -1
+                itemClicked.value = false
+
+
+            }
+
+            AssistChip(onClick = { /*TODO*/ }, label = {
+                Log.d("not good", "not good")
+                Text(
+                    text = "Explore Places",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            },
+                shape = RoundedCornerShape(10.dp),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
+            )
+            Spacer(modifier = Modifier.size(5.dp))
+            Divider()
+            val colors = listOf<Color>(Color.Green, Color.Yellow)
+
+            val viewNerf = remember { mutableStateOf(false) }
+            if (!viewNerf.value ) {
+                NerfItems(
+                    options,
+                    itemNo,
+                    itemClicked,
+                    itemName,
+                    scope,
+                    cameraPositionState,
+                    showMarker
+                )
+            }
+
+
+            Spacer(modifier = Modifier.size(15.dp))
+            val density = LocalDensity.current
+
+            AnimatedVisibility(
+                itemClicked.value && !viewNerf.value,
+                enter = expandIn()
+            ) {
+                Body(itemName, viewNerf,
+                    showMap = { latlng ->
+
+                        Log.d("showmap invoked", "h")
+                        LatLng.value = latlng
+                        showMarker.value = true
+
+                        scope.launch {
+
+                            stateOfScaffold.bottomSheetState.partialExpand()
+
+                            try {
+                                withContext(Dispatchers.Main) {
+                                    val cameraPosition =
+                                        CameraPosition.fromLatLngZoom(latlng, 18f)
+                                    cameraPositionState.animate(
+                                        update = CameraUpdateFactory.zoomBy(
+                                            -20f
+                                        ),
+                                        1000
+                                    )
+                                    delay(1000)
+                                    cameraPositionState.animate(
+                                        update = CameraUpdateFactory.newCameraPosition(
+                                            cameraPosition
+                                        ),
+                                        3000
+                                    )
+
+                                LocateButton.value = true
+                                }
+                            } catch (e: Exception) {
+                                Log.d(
+                                    "failed due to",
+                                    e.message.toString()
+                                )
+                            }
+
+
+                        }
+
+                    },
+                    showButton = {
+
+                    }
+                )
+
+            }
+
+            if (viewNerf.value) {
+                val configuraiton = LocalConfiguration.current
+                val width = configuraiton.screenWidthDp.dp
+                val height = configuraiton.screenHeightDp.dp
+                Column {
+                    Box(
+                        modifier = Modifier
+
+                            .clip(
+                                RoundedCornerShape(5.dp)
+                            )
+                            .fillMaxWidth()
+                            .height((height / 3))
+                            .background(MaterialTheme.colorScheme.background)
+                            .clickable { }, contentAlignment = Alignment.Center
+                    )
+                    {
+
+
+                        PlayVideo {
+                            viewNerf.value = false
+                        }
+
+                    }
+                    OptionsInVideo(viewModel) {
+                        line.value = it
+                        showDirection.value = true
+                    }
+                    Spacer(modifier = Modifier.size(15.dp))
+                }
+            }
+            Spacer(modifier = Modifier.size(15.dp))
+            UploadView()
+
+        }
+    }
+}
+
 @Composable
 private fun OldExplorePlacesButton(
     showDialog: MutableState<Boolean>,
@@ -990,7 +1035,7 @@ private fun OldExplorePlacesButton(
             .fillMaxWidth()
             .padding(8.dp), shape = RoundedCornerShape(50.dp),
         onClick = {
-            showDialog.value = !showDialog.value;
+            showDialog.value = !showDialog.value
             showCountryDialog.value = false
             showBoundary.value = false
             if (layer != null) {
@@ -1130,6 +1175,7 @@ private fun OldExplorePlacesButton(
                                                 )
                                             }
                                         }
+
                                     }
                             )
                         }
@@ -1149,10 +1195,11 @@ private fun NerfItems(
     itemClicked: MutableState<Boolean>,
     itemName: MutableState<String>,
     scope: CoroutineScope,
-    cameraPositionState: CameraPositionState
+    cameraPositionState: CameraPositionState,
+    showMarker: MutableState<Boolean>
 ) {
 
-    val viewModel  = RegisterViewModel()
+    val viewModel = RegisterViewModel()
     LazyRow(
         modifier = Modifier.padding(top = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1189,7 +1236,7 @@ private fun NerfItems(
                             itemNo.value = it
                             itemName.value = options[it].name
                             viewModel.updateLocation(options[it].name)
-                            scope.launch {
+                            val job = scope.launch {
                                 try {
                                     withContext(Dispatchers.Main) {
                                         val cameraPosition =
@@ -1216,6 +1263,11 @@ private fun NerfItems(
                                         e.message.toString()
                                     )
                                 }
+                            }
+                            if (showMarker.value) {
+                                Log.d("showmarker is true", "h")
+                                if (job.isActive)
+                                    job.cancel()
                             }
                         }
                 )
@@ -1244,8 +1296,15 @@ private fun NerfItems(
 private fun Body(
     itemName: MutableState<String>,
     viewNerf: MutableState<Boolean>,
-    showMap : () -> Unit
+    showMap: (LatLng) -> Unit,
+    showButton: () -> Unit
 ) {
+    val ltlng = remember {
+        mutableStateOf(LatLng(0.0, 0.0))
+    }
+    val context = LocalContext.current
+    val already = remember{ mutableStateOf(false) }
+
     Box(
         modifier = Modifier.animateContentSize()
     ) {
@@ -1260,6 +1319,7 @@ private fun Body(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(10.dp)
         ) {
+            val checkLocation = remember { mutableStateOf(false) }
             AssistChip(onClick = { /*TODO*/ }, label = {
                 Log.d("not good", "not good")
                 Text(
@@ -1271,31 +1331,90 @@ private fun Body(
                 colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                 border = AssistChipDefaults.assistChipBorder(borderColor = MaterialTheme.colorScheme.tertiary)
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    val haveLocation = remember {
+                        mutableStateOf(false)
+                    }
+                    FilledTonalButton(onClick = {
+                        viewNerf.value = true
 
 
-                FilledTonalButton(onClick = {
-                    viewNerf.value = true
+                    }) {
+                        Text(text = "View in NERF")
+                    }
+                    FilledTonalButton(onClick = {
 
+                    checkLocation.value = true
+                    if(already.value)
+                    {
+                        Log.d("coordinates", ltlng.value.latitude.toString() + " " + ltlng.value.longitude.toString()  )
+                        showMap(ltlng.value)
+                    }
 
-                }) {
-                    Text(text = "View in NERF")
+                    }) {
+                        Text(text = "View in Geospatial")
+                    }
+
                 }
-                FilledTonalButton(onClick = {
+                val pm = LocalContext.current.packageManager
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(onClick = {
 
-                    showMap()
+                        val myintent = pm.getLaunchIntentForPackage("com.wasul.nerfnavAR")
+                        // check if the intent is not null
+                        if (myintent != null) {
+                            // start the app
+                            startActivity(context, myintent, null)
+                        } else {
+                            // show a message that the app is not found
+                            Toast.makeText(context, "App not found", Toast.LENGTH_SHORT).show()
+                        }
 
+                    }) {
+                        Text(text = "View in AR")
+                    }
 
-                }) {
-                    Text(text = "View in AR")
+                    FilledTonalButton(onClick = {
+
+                        // get the launch intent for the app
+                        val myintent = pm.getLaunchIntentForPackage("com.wasuli.nerfnav360")
+                        // check if the intent is not null
+                        if (myintent != null) {
+                            // start the app
+                            startActivity(context, myintent, null)
+                        } else {
+                            // show a message that the app is not found
+                            Toast.makeText(context, "App not found", Toast.LENGTH_SHORT).show()
+                        }
+
+                    }) {
+                        Text(text = "View in Spatial")
+                    }
                 }
-
             }
 
+            if(checkLocation.value)
+            {
+
+                Layout{
+                    lat->
+                        Log.d("coordinatesare", "${lat.latitude} ${lat.longitude}")
+                    ltlng.value = lat
+                        showMap(lat)
+                    already.value = true
+                }
+            }
         }
 
 

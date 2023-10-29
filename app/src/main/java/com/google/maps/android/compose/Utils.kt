@@ -1,24 +1,17 @@
 package com.google.maps.android.compose
 
-import android.Manifest
 import android.app.Activity
-import android.app.Activity.RESULT_OK
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.IntentSender
 import android.content.pm.ActivityInfo
-import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationRequest
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
@@ -35,19 +28,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ButtonColors
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.Card
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
+import androidx.compose.material3.BottomSheetScaffoldState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,9 +59,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -74,22 +72,25 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.google.accompanist.systemuicontroller.SystemUiController
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
-import com.google.android.gms.common.api.ResolvableApiException
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationSettingsRequest
-import com.google.android.gms.location.LocationSettingsResponse
-import com.google.android.gms.location.SettingsClient
-import com.google.android.gms.tasks.Task
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
 import com.google.maps.android.compose.model.AirQualityResponse
 import com.google.maps.android.compose.Network.getImage
 import com.google.maps.android.compose.Network.makeAirQualityApiCall
 import com.google.maps.android.compose.Network.makeDirectionsApiCall
 import com.google.maps.android.compose.ViewModel.RegisterViewModel
-import com.google.maps.android.compose.model.Coordinates
 
 import com.google.maps.android.compose.model.iamge
+import kotlinx.coroutines.launch
 import java.util.Random
 
+
+private lateinit var locationRequest: LocationRequest
+private lateinit var locationCallback: LocationCallback
+private var currentLocation: Location? = null
+lateinit var locationProvider: FusedLocationProviderClient
+private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
 @Composable
 fun LockScreenOrientation(orientation: Int) {
     val context = LocalContext.current
@@ -367,6 +368,108 @@ fun AirQualityView(viewModel: RegisterViewModel) {
 
 
 
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ARUtil(
+    markerPlaced: MutableState<Boolean>,
+    stateOfScaffold: BottomSheetScaffoldState,
+    go: () -> Unit
+)
+{
+
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    LaunchedEffect(Unit)
+    {
+        scope.launch {
+            stateOfScaffold.bottomSheetState.expand()
+            Log.d("invoked partial expand", ";ds")
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center)
+    {
+        val pm = LocalContext.current.packageManager
+        val d = if(markerPlaced.value) "View in Geospatial" else "Select Place"
+        val s = if(markerPlaced.value) Color(40, 215, 101) else Color(38, 40, 46)
+        FilledTonalButton(onClick = {
+
+
+                                    if(markerPlaced.value)
+                                    {
+
+                                        val myintent = pm.getLaunchIntentForPackage("com.DefaultCompany.google_maps")
+                                        // check if the intent is not null
+                                        if (myintent != null) {
+                                            // start the app
+                                            ContextCompat.startActivity(context, myintent, null)
+                                        } else {
+                                            // show a message that the app is not found
+                                            Toast.makeText(context, "App not found", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+
+
+
+        }, colors = ButtonDefaults.filledTonalButtonColors(containerColor = s)) {
+            Text(text = d)
+        }
+    }
+
+
+}
+
+@Composable
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+fun SplashScreen(goToScreen : () -> Unit)
+{
+    Box(modifier = Modifier.fillMaxSize())
+    {
+        val context = LocalContext.current
+        val rawUri = Uri.parse("android.resource://${context.packageName}/${R.raw.appsplash}")
+        val exoPlayer = remember{
+            ExoPlayer.Builder(context)
+                .build()
+                .apply {
+                    val defaultDataSourceFactory = DefaultDataSource.Factory(context)
+                    val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(
+                        context,
+                        defaultDataSourceFactory
+                    )
+
+                    val source = ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri(rawUri))
+
+                    setMediaSource(source)
+                    prepare()
+                }
+        }
+        exoPlayer.playWhenReady = true
+        exoPlayer.videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    goToScreen()
+                }
+            }
+        })
+
+        DisposableEffect(
+            AndroidView(factory = { PlayerView(context).apply {
+//            hideController()
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                player = exoPlayer
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }})
+        )
+        {
+            onDispose { exoPlayer.release() }
+
+        }
     }
 }
 
